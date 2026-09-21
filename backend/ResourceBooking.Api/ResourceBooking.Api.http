@@ -1,0 +1,227 @@
+@host = https://localhost:7001
+
+### Provjera da poslužitelj i baza rade
+GET {{host}}/api/health
+
+### Prijava kao admin (seed korisnik)
+# @name loginAdmin
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@demo.hr",
+  "password": "Admin123!"
+}
+
+### Token iz prethodnog odgovora
+@adminToken = {{loginAdmin.response.body.token}}
+
+### Prijava kao obični korisnik (seed korisnik)
+# @name loginUser
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "korisnik@demo.hr",
+  "password": "Korisnik123!"
+}
+
+@userToken = {{loginUser.response.body.token}}
+
+### Podaci o prijavljenom adminu
+GET {{host}}/api/auth/me
+Authorization: Bearer {{adminToken}}
+
+### Podaci o prijavljenom korisniku
+GET {{host}}/api/auth/me
+Authorization: Bearer {{userToken}}
+
+### Bez tokena - mora vratiti 401
+GET {{host}}/api/auth/me
+
+### Registracija novog korisnika
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "ana.anic@demo.hr",
+  "password": "Lozinka123!",
+  "fullName": "Ana Anić"
+}
+
+### Registracija s već zauzetim e-mailom - mora vratiti 400
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "admin@demo.hr",
+  "password": "Lozinka123!",
+  "fullName": "Netko Drugi"
+}
+
+### Prijava s krivom lozinkom - mora vratiti 401
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@demo.hr",
+  "password": "kriva-lozinka"
+}
+
+# ============================================================
+# RESURSI I REZERVACIJE
+# Promijeni datum ispod na neki budući dan prije testiranja.
+# ============================================================
+
+@datum = 2026-09-22
+
+### Popis svih resursa
+GET {{host}}/api/resources
+Authorization: Bearer {{userToken}}
+
+### Pretraga resursa
+GET {{host}}/api/resources?search=sala&type=MeetingRoom
+Authorization: Bearer {{userToken}}
+
+### Jedan resurs
+GET {{host}}/api/resources/1
+Authorization: Bearer {{userToken}}
+
+### Slobodni termini resursa 1 za odabrani datum
+GET {{host}}/api/resources/1/availability?date={{datum}}
+Authorization: Bearer {{userToken}}
+
+### Rezervacija termina 10:00 - 11:00
+POST {{host}}/api/reservations
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "resourceId": 1,
+  "startsAt": "{{datum}}T10:00:00",
+  "endsAt": "{{datum}}T11:00:00",
+  "note": "Sastanak tima"
+}
+
+### Isti termin ponovno - mora vratiti 400 (zauzeto)
+POST {{host}}/api/reservations
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "resourceId": 1,
+  "startsAt": "{{datum}}T10:30:00",
+  "endsAt": "{{datum}}T11:30:00",
+  "note": "Preklapa se s prethodnom"
+}
+
+### Susjedni termin 11:00 - 12:00 - mora proći
+POST {{host}}/api/reservations
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "resourceId": 1,
+  "startsAt": "{{datum}}T11:00:00",
+  "endsAt": "{{datum}}T12:00:00",
+  "note": "Odmah nakon prethodne"
+}
+
+### Izvan radnog vremena - mora vratiti 400
+POST {{host}}/api/reservations
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "resourceId": 1,
+  "startsAt": "{{datum}}T05:00:00",
+  "endsAt": "{{datum}}T06:00:00"
+}
+
+### Termin u prošlosti - mora vratiti 400
+POST {{host}}/api/reservations
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "resourceId": 1,
+  "startsAt": "2020-01-01T10:00:00",
+  "endsAt": "2020-01-01T11:00:00"
+}
+
+### Moje rezervacije
+GET {{host}}/api/reservations/my
+Authorization: Bearer {{userToken}}
+
+### Moja statistika
+GET {{host}}/api/reservations/my/stats
+Authorization: Bearer {{userToken}}
+
+### Otkazivanje vlastite rezervacije (promijeni broj na svoj ID)
+DELETE {{host}}/api/reservations/1
+Authorization: Bearer {{userToken}}
+
+### Obični korisnik pokušava vidjeti sve rezervacije - mora vratiti 403
+GET {{host}}/api/reservations
+Authorization: Bearer {{userToken}}
+
+### Admin vidi sve rezervacije
+GET {{host}}/api/reservations
+Authorization: Bearer {{adminToken}}
+
+### Admin filtrira po resursu i statusu
+GET {{host}}/api/reservations?resourceId=1&status=Active
+Authorization: Bearer {{adminToken}}
+
+### Admin dodaje novi resurs
+POST {{host}}/api/resources
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Sala Istok",
+  "type": "MeetingRoom",
+  "location": "3. kat",
+  "capacity": 10,
+  "description": "Nova sala dodana kroz API",
+  "openingTime": "08:00",
+  "closingTime": "16:00",
+  "slotMinutes": 60,
+  "isActive": true
+}
+
+### Obični korisnik pokušava dodati resurs - mora vratiti 403
+POST {{host}}/api/resources
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "name": "Neovlašteno",
+  "type": "Equipment",
+  "location": "Nigdje",
+  "capacity": 1,
+  "openingTime": "08:00",
+  "closingTime": "16:00",
+  "slotMinutes": 60
+}
+
+### Admin uređuje resurs
+PUT {{host}}/api/resources/3
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Sala Jug (obnovljena)",
+  "type": "MeetingRoom",
+  "location": "1. kat",
+  "capacity": 10,
+  "description": "Nakon preuređenja prima 10 osoba.",
+  "openingTime": "08:00",
+  "closingTime": "18:00",
+  "slotMinutes": 30,
+  "isActive": true
+}
+
+### Admin briše resurs (s rezervacijama postaje neaktivan)
+DELETE {{host}}/api/resources/6
+Authorization: Bearer {{adminToken}}
